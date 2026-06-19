@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-skill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier la longueur de la description SKILL.md
+        run: |
+          python3 - <<'EOF'
+          import re, sys
+          content = open('.claude/skills/homo-economicus/SKILL.md').read()
+          m = re.search(r'description:\s*(.+?)\n---', content, re.DOTALL)
+          if not m:
+              print("ERREUR : champ description introuvable dans SKILL.md")
+              sys.exit(1)
+          desc = m.group(1).strip()
+          count = len(desc.split())
+          print(f"Description : {count} mots")
+          if count > 130:
+              print(f"ERREUR : description trop longue ({count} > 130 mots)")
+              sys.exit(1)
+          EOF
+
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer ruff
+        run: pip install ruff
+
+      - name: Linter Python
+        run: |
+          if find .claude/skills/homo-economicus/scripts -name "*.py" 2>/dev/null | grep -q .; then
+            ruff check .claude/skills/homo-economicus/scripts/
+          else
+            echo "Aucun script Python à linter pour l'instant."
+          fi
+
+  validate-html-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier l'absence de dépendances JS externes dans le template
+        run: |
+          TEMPLATE=".claude/skills/homo-economicus/assets/report-template.html"
+          if [ -f "$TEMPLATE" ]; then
+            count=$(grep -cE 'cdn\.|\.js"' "$TEMPLATE" || true)
+            echo "Références CDN/JS externes : $count"
+            if [ "$count" -gt 0 ]; then
+              echo "ERREUR : des ressources JS externes ont été détectées dans le template."
+              exit 1
+            fi
+          else
+            echo "Template HTML absent pour l'instant — contrôle ignoré."
+          fi
+
+      - name: Vérifier l'absence de placeholders non résolus dans le template
+        run: |
+          TEMPLATE=".claude/skills/homo-economicus/assets/report-template.html"
+          if [ -f "$TEMPLATE" ]; then
+            count=$(grep -c '{{' "$TEMPLATE" || true)
+            echo "Placeholders {{ }} : $count"
+            if [ "$count" -gt 0 ]; then
+              echo "ERREUR : des placeholders non résolus ont été détectés dans le template."
+              exit 1
+            fi
+          else
+            echo "Template HTML absent pour l'instant — contrôle ignoré."
+          fi
